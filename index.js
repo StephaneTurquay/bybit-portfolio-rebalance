@@ -1,37 +1,26 @@
-// Generate by ChatGPT
+const { exchange } = require('./src/connectExchange.js');
+const { getAccountBalance } = require('./src/getAccountBalance.js');
+const { getPortfolioBalance } = require('./src/getPortfolioBalance.js');
+const { getSpotMarketsUSDT } = require('./src/getSpotMarketsUSDT.js');
+const { getTicker } = require('./src/getTicker.js');
+const { createMarketOrder } = require('./src/createMarketOrder.js');
+const { getOrder } = require('./src/getOrder.js');
 
-const ccxt = require('ccxt');
-const { apiKey, secret } = require('./config');
-const exchangeId = 'bybit'; // replace with your exchange ID
-const exchange = new ccxt[exchangeId]({
-  apiKey,
-  secret,
-  enableRateLimit: true
-});
 
-async function getAccountBalance() {
-  await exchange.loadMarkets();
-  const balance = await exchange.fetchBalance();
-  return balance.total;
-}
+const defaultQuoteCurrency = 'USDT';
 
-async function getTotalCoinAmount(symbol) {
-  const balance = await exchange.fetchBalance();
+const strategy = {
+        id: 1,
+        ts: 1676631611,
+        assets: {
+            'BTC': 0.4,
+            'ETH': 0.3,
+            'BIT': 0.2,
+            'USDT': 0.1
+        },
+        version: 1,
+        event: 'Strategie Created',
+};
 
-  if (!balance.hasOwnProperty(symbol)) {
-    throw new Error(`Symbol ${symbol} not found in account balance`);
-  }
 
-  const amount = balance[symbol].total;
 
-  return amount;
-}
-
-// Example usage:
-getAccountBalance()
-  .then((balance) => console.log('Account Balance:', balance))
-  .catch((error) => console.error(error));
-
-getTotalCoinAmount('BTC')
-  .then((amount) => console.log('Total BTC Held:', amount))
-  .catch((error) => console.error(error));
