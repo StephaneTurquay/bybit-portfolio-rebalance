@@ -1,10 +1,15 @@
 const { exchange } = require('./connectExchange.js');
+const { getSpotMarketsUSDT } = require('./getSpotMarketsUSDT.js');
 
-async function createMarketOrder(side, symbol, amount) {
+async function createMarketOrder(symbol, side, amount) {
     try {
+
+        const [baseCurrency, quoteCurrency] = symbol.split('/');
         // Get the allowed limits and costs for the traded currency
-        const spotMarkets = await exchange.loadMarkets();
-        const limits = spotMarkets[symbol].limits;
+        const spotMarkets = await getSpotMarketsUSDT();
+
+        //const spotMarkets = await exchange.loadMarkets();
+        const limits = spotMarkets[baseCurrency].limits;
 
         // Check if the amount is within the allowed limits
         if (amount < limits.amount.min) {
@@ -18,6 +23,8 @@ async function createMarketOrder(side, symbol, amount) {
         const lastPrice = ticker.last;
         const askPrice = ticker.ask;
         const bidPrice = ticker.bid;
+
+        //TODO: Use precision value returned in SpotMarketsUSDT (loadMarkets) to ensure we format values accordingly
 
         // Calculate the cost of the trade
         const cost = lastPrice * amount;
