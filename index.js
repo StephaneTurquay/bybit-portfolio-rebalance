@@ -112,7 +112,21 @@ async function rebalancePortfolio(strategy) {
       }
     }
 
-    
+    for (const currency of Object.keys(assetsToSell)) { // Looping on currencies to sell first to provide liquidity
+      if (assetsToSell[currency].orderQty > limits.amount.min && assetsToSell[currency].orderQty < limits.amount.max) {
+        const order = await createMarketOrder(`${currency}/${defaultQuoteCurrency}`, 'sell', assetsToSell[currency].orderQty);
+        orderIds.push(order.id);
+      }
+    }
+
+    for (const currency of Object.keys(assetsToBuy)) {
+      if (assetsToBuy[currency].orderQty > limits.amount.min && assetsToBuy[currency].orderQty < limits.amount.max) {
+        if (assetsToBuy[currency].orderPrice > limits.cost.min && assetsToBuy[currency].orderPrice < limits.cost.max) {
+          const order = await createMarketOrder(`${currency}/${defaultQuoteCurrency}`, 'buy', assetsToBuy[currency].amount, ask);
+          orderIds.push(order.id);
+        }
+      }
+    }
 
     i++;
   }
