@@ -113,6 +113,8 @@ async function rebalancePortfolio(strategy) {
     }
 
     for (const currency of Object.keys(assetsToSell)) { // Looping on currencies to sell first to provide liquidity
+      const limits = spotMarkets[currency].limits;
+
       if (assetsToSell[currency].orderQty > limits.amount.min && assetsToSell[currency].orderQty < limits.amount.max) {
         const order = await createMarketOrder(`${currency}/${defaultQuoteCurrency}`, 'sell', assetsToSell[currency].orderQty);
         orderIds.push(order.id);
@@ -120,9 +122,10 @@ async function rebalancePortfolio(strategy) {
     }
 
     for (const currency of Object.keys(assetsToBuy)) {
+      const limits = spotMarkets[currency].limits;
       if (assetsToBuy[currency].orderQty > limits.amount.min && assetsToBuy[currency].orderQty < limits.amount.max) {
         if (assetsToBuy[currency].orderPrice > limits.cost.min && assetsToBuy[currency].orderPrice < limits.cost.max) {
-          const order = await createMarketOrder(`${currency}/${defaultQuoteCurrency}`, 'buy', assetsToBuy[currency].amount, ask);
+          const order = await createMarketOrder(`${currency}/${defaultQuoteCurrency}`, 'buy', assetsToBuy[currency].amount, assetsToBuy[currency].ask);
           orderIds.push(order.id);
         }
       }
