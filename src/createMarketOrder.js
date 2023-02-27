@@ -39,7 +39,7 @@ async function createMarketOrder(symbol, side, amount) {
         // Place the market order
         const order = await exchange.createOrder(symbol, 'market', side, amount, lastPrice);
 
-        console.log(order);
+       // console.log(order);
 
         // Return the order
         return order;

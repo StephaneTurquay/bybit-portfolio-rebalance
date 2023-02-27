@@ -5,6 +5,7 @@ const { getSpotMarketsUSDT } = require('./src/getSpotMarketsUSDT.js');
 const { getTicker } = require('./src/getTicker.js');
 const { createMarketOrder } = require('./src/createMarketOrder.js');
 const { getOrder } = require('./src/getOrder.js');
+const { countDecimals } = require('./src/utils/utils.js')
 
 
 const defaultQuoteCurrency = 'USDT';
@@ -27,106 +28,95 @@ const strategy = {
 
 async function rebalancePortfolio(strategy) {
   const portfolioBalance = await getPortfolioBalance(strategy);
+  console.log(portfolioBalance);
+
+  // Load all USDT Pairs to get limits and precisions
+  // TODO: I could query it only once and pass it as argument
   const spotMarkets = await getSpotMarketsUSDT();
 
   const assetsToBuy = {};
   const assetsToSell = {};
   const orderIds = []; // array to store order IDs
+
+  const debug = [];
+  let i = 0;
+
   
   for (const currency of Object.keys(strategy.assets)) {
-    const targetAllocation = strategy.assets[currency] * portfolioBalance.total;
+
+    // Calculate current allocation & targetted allocation
+    const targetAllocationUSDT = strategy.assets[currency] * portfolioBalance.total;
     const targetAllocationPercent = strategy.assets[currency];
-    const currentAllocation = portfolioBalance.assets[currency].totalUSDT;
-    const currentAllocationPercent = currentAllocation/portfolioBalance.total;
-    const difference = targetAllocation - currentAllocation;
-    const differencePercent = currentAllocationPercent - targetAllocationPercent;
+    const currentAllocationUSDT = portfolioBalance.assets[currency].totalUSDT;
+    const currentAllocationPercent = parseFloat((currentAllocationUSDT/portfolioBalance.total).toFixed(2));
+    const differenceUSDT = targetAllocationUSDT - currentAllocationUSDT; // How much we should buy / sell in USDT
+    const differencePercent = targetAllocationPercent - currentAllocationPercent // E.g.: If current 0.401 while target is 0.401 then we should rebalance, aka difference is >= 0.001
 
-    console.log(`${targetAllocation}, ${targetAllocationPercent}, ${currentAllocation}. ${currentAllocationPercent}, ${difference}, ${differencePercent}`);
+    debug[i] = {
 
-    console.log(`${currency} -- targetAllocation: ${targetAllocation} -- currentAllocation: ${currentAllocation} -- Difference: ${difference}`);
-
-    //TODO: Include getTicket data in assetsToBuy/Sell so we don't query one more time just before placing the order
-    if (currency !== defaultQuoteCurrency) {
-      if (Math.abs(differencePercent) >= 0.001 ) { // Difference is move than 0.1pp
-        console.log(Math.abs(differencePercent));
-
+      currency: currency,
+      targetPercent: targetAllocationPercent,
+      targetUSDT: targetAllocationUSDT,
+      currentPercent: currentAllocationPercent,
+      currentUSDT: currentAllocationUSDT,
+      diffPercent: differencePercent,
+      diffUSDT: differenceUSDT,
+      total: portfolioBalance.total
+      
+    }; 
+    
+    if (currency !== defaultQuoteCurrency) { // Skip to avoid USDT/USDT pair.
+      if (Math.abs(differencePercent) >= 0.001 ) { // If current 0.401 while target is 0.401 then we should rebalance, aka difference is >= 0.001
         try {
-          const side = Math.sign(difference) === 1 ? 'buy' : 'sell';
-          const price = await getTicker(currency, 'USDT');
-          const precision = spotMarkets[currency].precision.amount;
+          
+          // Prepare the market order details
+          const side = Math.sign(differenceUSDT) === 1 ? 'buy' : 'sell';
+          const price = await getTicker(currency, 'USDT'); // Current price (bid, ask, last) of the asset in USDT
+          const precision = {
+            amount: countDecimals(spotMarkets[currency].precision.amount),
+            price: countDecimals(spotMarkets[currency].precision.price),
+          };
+          let amount = 0; // Init amount to buy/sell for the given currency
 
           if (side === 'buy') {
-            const amount = Math.floor((Math.abs(difference) / price.ask) / precision) * precision;
-            console.log(`Amount: ${amount}`);
+            orderQty = parseFloat((Math.abs(differenceUSDT) / price.ask).toFixed(precision.amount)) // Calculate amount considering the precision (max number of decimals) provided by the exchange
+            orderPrice = parseFloat((orderQty * price.ask).toFixed(precision.price));
             assetsToBuy[currency] = {
-              amount: amount,
+              orderQty: orderQty,
+              orderPrice: orderPrice,
               bid: price.bid,
               ask: price.ask,
+              last: price.last,
             }
-
-            //console.log(`Rebalancing ${currency} ${side} ${amount} --- ${JSON.stringify(spotMarkets[currency], null, 2)}`);
           }
           else if (side === 'sell') {
-            const amount = Math.floor((Math.abs(difference) / price.bid) / precision) * precision;
-            assetsToSell[currency] = {
-              amount: amount,
+            orderQty = parseFloat((Math.abs(differenceUSDT) / price.bid).toFixed(precision.amount)) // Calculate amount considering the precision (max number of decimals) provided by the exchange
+            orderPrice = parseFloat((orderQty * price.bid).toFixed(precision.price));
+            assetsToBuy[currency] = {
+              orderQty: orderQty,
+              orderPrice: orderPrice,
               bid: price.bid,
               ask: price.ask,
+              last: price.last,
             }
-            //console.log(`Rebalancing ${currency} ${side} ${amount} --- ${JSON.stringify(spotMarkets[currency], null, 2)}`);
           }
+          console.log('Assets to sell');
+          console.log(assetsToSell);
+          console.log('Assets to buy');
+          console.log(assetsToBuy);
+
+
         } catch(err) {
-          console.log(`Error getting aaa for ${currency}/USDT: ${err.message}`);
+          console.log(err);
         }
       }
     }
+
+    
+
+    i++;
   }
-
-  for (const currency of Object.keys(assetsToSell)) {
-    const bid = assetsToSell[currency].bid;
-    const limits = spotMarkets[currency].limits;
-      
-    if (assetsToSell[currency].amount > limits.amount.min && assetsToSell[currency].amount < limits.amount.max) {
-
-      console.log(`${currency} -- ${limits.amount.min} -- ${limits.cost.min}`)
-
-      console.log(`SELL: ${currency}/${defaultQuoteCurrency}, Amount: ${assetsToSell[currency].amount}, Price ${bid},  Limit: ${spotMarkets[currency].limits.amount.min}`);
-      const order = await createMarketOrder(`${currency}/${defaultQuoteCurrency}`, 'sell', assetsToSell[currency].amount);
-      orderIds.push(order.id);
-    }
-  }
-  for (const currency of Object.keys(assetsToBuy)) {
-    const ask = assetsToBuy[currency].ask;
-    const limits = spotMarkets[currency].limits;
-
-    console.log(ask);
-
-    if (assetsToBuy[currency].amount > limits.amount.min && assetsToBuy[currency].amount < limits.amount.max) {
-      if (ask*assetsToBuy[currency].amount > limits.cost.min && ask*assetsToBuy[currency].amount < limits.cost.max) {
-        console.log(`${currency} -- ${limits.amount.min} -- ${limits.cost.min}`)
-
-        console.log(`BUY: ${currency}/${defaultQuoteCurrency}, Amount: ${assetsToBuy[currency].amount}, Price ${ask}, Limit: ${spotMarkets[currency].limits.amount.min}, ${ask*assetsToBuy[currency].amount}`);
-        const order = await createMarketOrder(`${currency}/${defaultQuoteCurrency}`, 'buy', assetsToBuy[currency].amount, ask);
-        orderIds.push(order.id);
-      }
-      else {
-        console.log(`${currency}: Order value lower than minimum cost. ${assetsToBuy[currency].amount}, ${limits.cost.min}`);
-      }
-    }
-  }
-
-  // wait for orders to be closed
-  while (orderIds.length > 0) {
-    const orderId = orderIds[0];
-    const order = await getOrder(orderId);
-    console.log(order);
-    if ((order && order.status === 'closed') || (order && order.status === 'PARTIALLY_FILLED_CANCELED' && order.remaining === 0)) {
-      orderIds.shift(); // remove closed order ID from array
-    }
-    await new Promise(resolve => setTimeout(resolve, 1000)); // wait 1 second before checking next order
-  }
-
-  console.log(await getPortfolioBalance(strategy));
+  console.table(debug);
 
 }
 
